@@ -1,40 +1,58 @@
-# Maven
-- task: AzureFunctionApp@2
-  inputs:
-    appType: 'functionApp'
-    appName: 
-    package: '$(System.DefaultWorkingDirectory)/**/*.zip'
-    deploymentMethod: 'auto'
-# Build your Java project and run tests with Apache Maven.
-# Add steps that analyze code, save build artifacts, deploy, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/java
-
 trigger:
-- master
+- master  # Replace with your trigger (e.g., branch)
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: ubuntu-latest  # Adjust VM image as needed
 
-steps:
-- task: Maven@3
-  displayName: 'Maven app/pom.xml'
-  inputs:
-    mavenPomFile: 'app/pom.xml'
-    codeCoverageToolOption: cobertura
+stages:
+- stage: BuildJava
+  jobs:
+  - job: BuildJob
+    displayName: Build Java Function App with Maven
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: Maven@3
+      displayName: 'Maven build (app/pom.xml)'
+      inputs:
+        mavenPomFile: 'app/pom.xml'
+        goals: 'package'  # Assuming 'package' is the goal for building
+        codeCoverageToolOption: copertura
+        # Add other Maven goals as needed (e.g., test)
 
+- stage: Deploy
+  dependsOn: BuildJava  # Ensures deployment happens after the build stage
+  jobs:
+  - job: DeployJob
+    displayName: Deploy Function App to Azure
+    condition: succeeded()  # Only deploy if the build stage succeeds
+    steps:
+    - task: ArchiveFiles@2
+      displayName: 'Create ZIP archive'
+      inputs:
+        rootFolderOrFile: '$(Build.SourcesDirectory)'  # Adjust as needed
+        includeRootFolder: false
+        pattern: '/*/.jar'  # Include necessary JAR files
+        archiveType: 'zip'
+        archiveFileName: '$(Build.ArtifactStagingDirectory)/functionapp.zip'  # Custom zip name
+    - task: AzureFunctionApp@2
+      displayName: 'Deploy Function App to Azure'
+      inputs:
+        appType: 'functionApp'
+        appName: '<your-function-app-name>'  # Replace with your app name
+        package: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
+        deploymentMethod: 'auto'
 
-- task: CopyFiles@2
-  displayName: 'Copy Files to: $(Build.ArtifactStagingDirectory)'
-  inputs:
-    SourceFolder: '$(Build.SourcesDirectory)'
-    Contents: '**/*.jar'
-    TargetFolder: '$(Build.ArtifactStagingDirectory)'
-    CleanTargetFolder: true
-    preserveTimestamp: true
-
-- task: PublishBuildArtifacts@1
-  inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-    ArtifactName: 'drop'
-    publishLocation: 'Container'
-  condition: succeededOrFailed()
+- stage: PublishArtifacts  # Optional stage
+  dependsOn: BuildJava  # Ensures publishing happens after the build stage
+  jobs:
+  - job: PublishArtifactsJob
+    displayName: Publish Build Artifacts
+    condition: succeededOrFailed()  # Publish regardless of build success/failure
+    steps:
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Build Artifacts'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
